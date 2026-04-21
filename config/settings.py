@@ -30,7 +30,7 @@ class Settings:
     AI_PROVIDER: str       = os.getenv("AI_PROVIDER", "gemini").lower()
 
     GEMINI_API_KEY: str    = os.getenv("GEMINI_API_KEY", "")
-    GEMINI_MODEL: str      = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    GEMINI_MODEL: str      = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
 
     GROQ_API_KEY: str      = os.getenv("GROQ_API_KEY", "")
     GROQ_MODEL: str        = os.getenv("GROQ_MODEL", "llama3-70b-versatile")

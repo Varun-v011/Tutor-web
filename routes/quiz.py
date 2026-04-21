@@ -6,7 +6,7 @@ Flask Blueprint — all quiz and lead-generation endpoints.
 Endpoints:
   GET  /health            — Service health check
   POST /generate-quiz     — Generate 5 language questions via AI
-  POST /submit-quiz       — Grade answers, book calendar, send email
+  POST /submit-quiz       — Grade answers, book calendar, send email, save to DB
 """
 
 import logging
@@ -22,7 +22,8 @@ from models.lead import (
     QuizSubmitResponse,
     GradedResult,
 )
-from services import ai_service, google_calendar_service, email_service
+from services import ai_service, google_calendar_service, email_service, supabase_service
+from extensions import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -65,10 +66,10 @@ def health_check():
     warnings = settings.validate()
 
     return jsonify({
-        "status":       "ok",
-        "ai_provider":  settings.AI_PROVIDER,
+        "status": "ok",
+        "ai_provider": settings.AI_PROVIDER,
         "email_provider": settings.EMAIL_PROVIDER,
-        "config_warnings": warnings,  # empty list = all keys present
+        "config_warnings": warnings,
     }), 200
 
 
@@ -77,50 +78,21 @@ def health_check():
 # ─────────────────────────────────────────────────────────────────────────────
 
 @quiz_bp.post("/generate-quiz")
+@limiter.limit("20 per hour") 
 def generate_quiz():
     """
     Generate 5 language-diagnostic quiz questions.
-
-    Request body (JSON):
-        {
-          "language":     "French",          -- required
-          "difficulty":   "intermediate",    -- optional (default: intermediate)
-          "student_name": "Sarah"            -- optional (personalises questions)
-        }
-
-    Response (JSON):
-        {
-          "questions": [
-            {
-              "id":      1,
-              "skill":   "Grammar",
-              "type":    "mcq",
-              "text":    "Which sentence is correct?",
-              "options": {"A": "...", "B": "...", "C": "...", "D": "..."}
-            },
-            ...
-          ],
-          "language":   "French",
-          "difficulty": "intermediate"
-        }
-
-    Errors:
-        400 — invalid/missing fields
-        422 — Pydantic validation failed
-        502 — AI provider returned invalid response
-        500 — unexpected server error
     """
     data, err = _extract_json_body()
     if err:
         return err
 
-    # Validate request shape with Pydantic
     try:
         req = QuizGenerateRequest(**data)
     except ValidationError as exc:
         logger.warning("Validation error on /generate-quiz: %s", exc)
         return jsonify({
-            "error":   "Validation failed",
+            "error": "Validation failed",
             "details": exc.errors(),
         }), 422
 
@@ -133,14 +105,11 @@ def generate_quiz():
         questions = ai_service.generate_questions(
             language=req.language,
             difficulty=req.difficulty,
-
         )
     except EnvironmentError as exc:
-        # Missing API key
         logger.error("AI config error: %s", exc)
         return _json_error(str(exc), 500)
     except ValueError as exc:
-        # LLM returned bad JSON
         logger.error("AI service ValueError: %s", exc)
         return _json_error(f"AI returned an invalid response: {exc}", 502)
     except Exception as exc:
@@ -160,6 +129,7 @@ def generate_quiz():
 # ─────────────────────────────────────────────────────────────────────────────
 
 @quiz_bp.post("/submit-quiz")
+@limiter.limit("10 per hour") 
 def submit_quiz():
     """
     Full lead-capture pipeline:
@@ -167,50 +137,19 @@ def submit_quiz():
       2. Grade answers via AI → GradedResult.
       3. Create Google Calendar event → Google Meet link.
       4. Send booking confirmation email with Meet link + results.
-      5. Return the full result to the frontend.
-
-    Request body (JSON):
-        {
-          "student_name":  "Sarah",
-          "student_email": "sarah@example.com",
-          "student_phone": "+91 98765 43210",    -- optional
-          "language":      "French",
-          "answers": [
-            {
-              "question_id":    1,
-              "question_text":  "Which is correct?",
-              "student_answer": "B"
-            },
-            ...
-          ],
-          "booking_start": "2025-08-15T14:00:00"   -- ISO 8601
-        }
-
-    Response (JSON):
-        {
-          "message":       "Quiz graded and session booked successfully.",
-          "graded_result": { ... },
-          "meet_link":     "https://meet.google.com/abc-defg-hij",
-          "booking_start": "2025-08-15T14:00:00",
-          "email_sent":    true
-        }
-
-    Partial success:
-        If the calendar or email step fails, the graded result is still
-        returned with "meet_link": null and "email_sent": false,
-        plus a "warnings" array describing what failed.
+      5. Save student, quiz result, and booking to Supabase.
+      6. Return the full result to the frontend.
     """
     data, err = _extract_json_body()
     if err:
         return err
 
-    # Validate request shape
     try:
         req = QuizSubmitRequest(**data)
     except ValidationError as exc:
         logger.warning("Validation error on /submit-quiz: %s", exc)
         return jsonify({
-            "error":   "Validation failed",
+            "error": "Validation failed",
             "details": exc.errors(),
         }), 422
 
@@ -222,11 +161,11 @@ def submit_quiz():
         len(req.answers),
     )
 
-    # ── Step 1: Grade the quiz ─────────────────────────────────────────────
+    # Step 1: Grade
     answers_for_grading = [
         {
-            "question_id":    a.question_id,
-            "question_text":  a.question_text,
+            "question_id": a.question_id,
+            "question_text": a.question_text,
             "student_answer": a.student_answer,
         }
         for a in req.answers
@@ -247,7 +186,7 @@ def submit_quiz():
         logger.exception("Unexpected error during quiz grading")
         return _json_error(f"Grading failed: {exc}", 500)
 
-    # ── Step 2: Book the calendar slot ────────────────────────────────────
+    # Step 2: Calendar booking
     warnings = []
     meet_link = None
     event_info = {}
@@ -270,7 +209,7 @@ def submit_quiz():
         logger.error(msg)
         warnings.append(msg)
 
-    # ── Step 3: Send confirmation email ────────────────────────────────────
+    # Step 3: Email
     email_sent = False
     try:
         email_sent = email_service.send_booking_confirmation(
@@ -288,7 +227,18 @@ def submit_quiz():
         logger.error(msg)
         warnings.append(msg)
 
-    # ── Build response ──────────────────────────────────────────────────────
+    # Step 4: Save to Supabase
+    try:
+        student_id = supabase_service.save_student(req, graded)
+        if student_id:
+            supabase_service.save_quiz_result(student_id, req, graded)
+            if event_info:
+                supabase_service.save_booking(student_id, req, event_info)
+    except Exception as exc:
+        msg = f"Database save failed: {exc}"
+        logger.error(msg)
+        warnings.append(msg)
+
     logger.info(
         "Submit complete: score=%d cefr=%s meet=%s email=%s",
         graded.overall_score,
@@ -305,7 +255,6 @@ def submit_quiz():
         email_sent=email_sent,
     ).model_dump()
 
-    # Include non-fatal warnings so the frontend can surface them
     if warnings:
         response_data["warnings"] = warnings
 
