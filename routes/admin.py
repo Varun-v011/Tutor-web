@@ -4,6 +4,9 @@ from middleware.auth_guard import require_admin
 from supabase import create_client
 from datetime import datetime, timezone
 import os
+from services.google_calendar_service import create_event
+from datetime import datetime, timezone
+
 
 logger = logging.getLogger(__name__)
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -108,4 +111,56 @@ def update_status(user, student_id):
         logger.info("Admin %s updated student %s → %s", user.user.email, student_id, new_status)
         return jsonify({"ok": True, "status": new_status})
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# meeting-slots
+
+@admin_bp.route("/slots", methods=["POST"])
+@require_admin
+def create_slot(user):
+    body       = request.get_json(silent=True) or {}
+    slot_start = body.get("slot_start")
+    slot_end   = body.get("slot_end")
+    max_seats  = body.get("max_seats", 1)
+
+    if not slot_start or not slot_end:
+        return jsonify({"error": "slot_start and slot_end are required"}), 400
+
+    start_dt = datetime.fromisoformat(slot_start)
+    if start_dt.tzinfo is None:
+        start_dt = start_dt.replace(tzinfo=timezone.utc)
+
+    # Create Google Calendar event at slot creation time
+    try:
+        event = create_event(
+            student_email=os.getenv("TUTOR_EMAIL", ""),
+            student_name="Demo Session",
+            language="Demo",
+            start_dt=start_dt,
+            graded_result=None,
+        )
+        meet_link         = event.get("meet_link")
+        calendar_event_id = event.get("event_id")
+        html_link         = event.get("html_link")
+        logger.info("Meet link created: %s", meet_link)
+    except Exception as e:
+        logger.warning("Google Calendar failed, slot saved without Meet link: %s", e)
+        meet_link         = None
+        calendar_event_id = None
+        html_link         = None
+
+    try:
+        data = supabase.table("demo_slots").insert({
+            "slot_start":        slot_start,
+            "slot_end":          slot_end,
+            "max_seats":         max_seats,
+            "booked_seats":      0,
+            "is_active":         True,
+            "meet_link":         meet_link,
+            "calendar_event_id": calendar_event_id,
+            "html_link":         html_link,
+        }).execute()
+        return jsonify(data.data[0]), 201
+    except Exception as e:
+        logger.error("Failed to save slot: %s", e)
         return jsonify({"error": str(e)}), 500

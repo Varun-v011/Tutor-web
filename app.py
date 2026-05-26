@@ -11,6 +11,9 @@ from config.settings import settings
 from routes.quiz import quiz_bp
 from routes.auth import auth_bp
 from routes.admin import admin_bp
+from routes.slots import slots_bp
+from services.ai_service import load_store
+
 
 logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
@@ -27,14 +30,16 @@ def create_app() -> Flask:
 
     limiter.init_app(app)
 
-    CORS(app, resources={r"/*": {"origins": settings.CORS_ORIGINS}})
+    CORS(app, resources={r"/*": {"origins": settings.CORS_ORIGINS}}, supports_credentials=True)
     logger.info("CORS enabled for origins: %s", settings.CORS_ORIGINS)
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(quiz_bp)
-
+    app.register_blueprint(slots_bp)
+    load_store()
     @app.errorhandler(404)
+
     def not_found(e):
         return jsonify({"error": "Endpoint not found.", "status": 404}), 404
 

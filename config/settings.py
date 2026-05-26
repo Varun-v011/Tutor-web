@@ -30,7 +30,7 @@ class Settings:
     AI_PROVIDER: str       = os.getenv("AI_PROVIDER", "gemini").lower()
 
     GEMINI_API_KEY: str    = os.getenv("GEMINI_API_KEY", "")
-    GEMINI_MODEL: str      = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+    GEMINI_MODEL: str      = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
     GROQ_API_KEY: str      = os.getenv("GROQ_API_KEY", "")
     GROQ_MODEL: str        = os.getenv("GROQ_MODEL", "llama3-70b-versatile")
@@ -60,6 +60,11 @@ class Settings:
     # ── Tutor branding ────────────────────────────────────────────────────────
     TUTOR_NAME: str              = os.getenv("TUTOR_NAME", "Your Tutor")
     TUTOR_EMAIL: str             = os.getenv("TUTOR_EMAIL", "")
+    
+    # ────Supabase────────────────────────────────────────────────────────────────────────
+    SUPABASE_URL: str            = os.getenv("SUPABASE_URL", "")
+    SUPABASE_SERVICE_KEY: str            = os.getenv("SUPABASE_SERVICE_KEY", "")
+    SUPABASE_TABLE: str          = os.getenv("SUPABASE_TABLE", "")
 
     # ── CORS ──────────────────────────────────────────────────────────────────
     # Comma-separated list of allowed frontend origins

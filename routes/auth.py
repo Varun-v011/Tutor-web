@@ -1,41 +1,44 @@
-from flask import Blueprint, redirect, request, make_response
+from flask import Blueprint, request, jsonify, make_response
 from supabase import create_client
-import os
-from extensions import limiter
+import bcrypt, os
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
-supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
-
-
-@auth_bp.route("/login")
-@limiter.limit("10 per minute")
+@auth_bp.route("/login", methods=["POST"])
 def login():
-    response = supabase.auth.sign_in_with_oauth({
-        "provider": "google",
-        "options": {"redirect_to": os.getenv("REDIRECT_URL")}
-    })
-    return redirect(response.url)
+    data     = request.get_json(silent=True) or {}
+    email    = data.get("email", "").strip().lower()
+    password = data.get("password", "")
 
+    if not email or not password:
+        return jsonify({"error": "Email and password required"}), 400
 
-@auth_bp.route("/callback")
-def callback():
-    code = request.args.get("code")
-    session = supabase.auth.exchange_code_for_session({"auth_code": code})
-    token = session.session.access_token
-    resp = make_response(redirect(f"{FRONTEND_URL}/admin"))
+    result = supabase.table("admin_users") \
+             .select("password_hash") \
+             .eq("email", email) \
+             .single() \
+             .execute()
+
+    if not result.data:
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    stored_hash = result.data["password_hash"].encode()
+    if not bcrypt.checkpw(password.encode(), stored_hash):
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    resp = make_response(jsonify({"ok": True, "email": email}))
     resp.set_cookie(
-        "sb_token", token,
+        "admin_key",
+        os.getenv("ADMIN_TOKEN", "supersecrettoken123"),  # ✅ matches auth_guard.py
         httponly=True,
-        samesite="None",   # required for cross-port cookie (5000 → 5173)
-        secure=False,      # set True in production (HTTPS)
+        samesite="Lax",
+        max_age=60 * 60 * 24 * 7,
     )
     return resp
 
-
-@auth_bp.route("/logout")
+@auth_bp.route("/logout", methods=["POST"])
 def logout():
-    resp = make_response(redirect(f"{FRONTEND_URL}/"))
-    resp.delete_cookie("sb_token")
+    resp = make_response(jsonify({"ok": True}))
+    resp.delete_cookie("admin_key")
     return resp

@@ -1,42 +1,18 @@
-
 from functools import wraps
-from flask import request, redirect, jsonify
-from supabase import create_client
+from flask import request, jsonify
 import os
 
-supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
-
-ADMIN_EMAILS = [e.strip() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()]
-
-
-def require_auth(f):
-    """Validates sb_token cookie. Injects user into route handler."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = request.cookies.get("sb_token")
-        if not token:
-            return redirect("/auth/login")
-        try:
-            user = supabase.auth.get_user(token)
-            return f(user, *args, **kwargs)
-        except Exception:
-            return redirect("/auth/login")
-    return decorated
-
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "supersecrettoken123")
 
 def require_admin(f):
-    """Like require_auth but also checks ADMIN_EMAILS allowlist."""
+    """Check admin_key cookie or x-admin-key header against ADMIN_TOKEN."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        token = request.cookies.get("sb_token")
-        if not token:
-            return redirect("/auth/login")
-        try:
-            user = supabase.auth.get_user(token)
-            email = user.user.email
-            if ADMIN_EMAILS and email not in ADMIN_EMAILS:
-                return jsonify({"error": "Forbidden — not an admin account"}), 403
-            return f(user, *args, **kwargs)
-        except Exception:
-            return redirect("/auth/login")
+        key = request.headers.get("x-admin-key") or request.cookies.get("admin_key")
+        if not key or key != ADMIN_TOKEN:  # ✅ was ADMIN_PASSWORD, now ADMIN_TOKEN
+            return jsonify({"error": "Unauthorized"}), 401
+        class AdminUser:
+            class user:
+                email = "admin"
+        return f(AdminUser(), *args, **kwargs)
     return decorated
