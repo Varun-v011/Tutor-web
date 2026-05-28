@@ -13,6 +13,7 @@ from routes.auth import auth_bp
 from routes.admin import admin_bp
 from routes.slots import slots_bp
 from services.ai_service import load_store
+from routes.student_auth import student_auth_bp
 
 
 logging.basicConfig(
@@ -37,6 +38,7 @@ def create_app() -> Flask:
     app.register_blueprint(admin_bp)
     app.register_blueprint(quiz_bp)
     app.register_blueprint(slots_bp)
+    app.register_blueprint(student_auth_bp)
     load_store()
     @app.errorhandler(404)
 

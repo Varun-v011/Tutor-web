@@ -348,3 +348,75 @@ def send_booking_confirmation(
             "Unknown EMAIL_PROVIDER '%s'. Set it to 'gmail' or 'resend'.", provider
         )
         return False
+    
+    
+# reset password email (no booking details, just a reset link)
+def send_password_reset_email(student_email: str, student_name: str, reset_link: str) -> bool:
+    subject = "Reset your Lingua password"
+
+    plain = f"""Hello {student_name or 'there'},
+
+We received a request to reset your password.
+
+Reset your password:
+{reset_link}
+
+This link will expire soon and can only be used once.
+
+If you did not request this, you can safely ignore this email.
+
+{settings.TUTOR_NAME}
+"""
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;">
+      <h2>Reset your password</h2>
+      <p>Hello {student_name or 'there'},</p>
+      <p>We received a request to reset your password.</p>
+      <p>
+        <a href="{reset_link}" style="display:inline-block;padding:12px 18px;background:#C8922A;color:#111;text-decoration:none;border-radius:10px;font-weight:700;">
+          Reset Password
+        </a>
+      </p>
+      <p>If the button does not work, use this link:</p>
+      <p><a href="{reset_link}">{reset_link}</a></p>
+      <p>This link will expire soon and can only be used once.</p>
+      <p>If you did not request this, you can safely ignore this email.</p>
+      <p>{settings.TUTOR_NAME}</p>
+    </div>
+    """
+
+    try:
+        if settings.EMAIL_PROVIDER == "gmail":
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = settings.GMAIL_SENDER
+            msg["To"] = student_email
+            msg.attach(MIMEText(plain, "plain"))
+            msg.attach(MIMEText(html, "html"))
+
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                server.login(settings.GMAIL_SENDER, settings.GMAIL_APP_PASSWORD)
+                server.sendmail(settings.GMAIL_SENDER, student_email, msg.as_string())
+
+            logger.info("Password reset email sent via Gmail to %s", student_email)
+            return True
+
+        if settings.EMAIL_PROVIDER == "resend":
+            params = {
+                "from": settings.RESEND_FROM_EMAIL,
+                "to": [student_email],
+                "subject": subject,
+                "html": html,
+                "text": plain,
+            }
+            resend.Emails.send(params)
+            logger.info("Password reset email sent via Resend to %s", student_email)
+            return True
+
+        logger.error("Unknown EMAIL_PROVIDER: %s", settings.EMAIL_PROVIDER)
+        return False
+
+    except Exception as exc:
+        logger.error("Failed to send password reset email to %s: %s", student_email, exc)
+        return False

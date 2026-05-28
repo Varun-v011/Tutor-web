@@ -42,6 +42,11 @@ class Settings:
     GOOGLE_TOKEN_FILE: str       = os.getenv(
         "GOOGLE_TOKEN_FILE", "config/google_token.json"
     )
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    GOOGLE_PROJECT_ID: str = os.getenv("GOOGLE_PROJECT_ID", "")
+
+
     CALENDAR_TIMEZONE: str       = os.getenv("CALENDAR_TIMEZONE", "Asia/Kolkata")
     EVENT_DURATION_MINUTES: int  = int(os.getenv("EVENT_DURATION_MINUTES", "30"))
     GOOGLE_CALENDAR_ID: str      = os.getenv("GOOGLE_CALENDAR_ID", "primary")
@@ -72,6 +77,9 @@ class Settings:
         "CORS_ORIGINS",
         "http://localhost:3000,http://localhost:5173,http://127.0.0.1:5500"
     ).split(",")
+    
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    PASSWORD_RESET_TOKEN_TTL_MINUTES: int = int(os.getenv("PASSWORD_RESET_TOKEN_TTL_MINUTES", "30"))
 
     def validate(self) -> list[str]:
         """
