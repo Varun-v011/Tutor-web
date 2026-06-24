@@ -127,9 +127,3 @@ def rate_limit(max_requests=5, window_seconds=60):
         return wrapped
     return decorator
 
-# Apply rate limiting to login
-@auth_bp.route("/login", methods=["POST"])
-@rate_limit(max_requests=5, window_seconds=60)
-def login_rate_limited():
-    # Call original login logic
-    return login()
