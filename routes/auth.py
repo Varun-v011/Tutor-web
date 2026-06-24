@@ -3,6 +3,10 @@ from supabase import create_client
 import bcrypt, os, re, logging
 from datetime import datetime, timedelta
 
+
+
+IS_PROD = os.getenv("FLASK_ENV") == "production"
+
 # Configuration
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
@@ -70,9 +74,8 @@ def login():
             admin_token,
             httponly=True,
             samesite="Lax",
-            secure=True,  # Requires HTTPS
+             secure=IS_PROD, 
             max_age=60 * 60 * 24 * 7,  # 7 days
-            dtype="str"
         )
 
         logger.info(f"Login successful - {email}")
@@ -87,7 +90,7 @@ def login():
 def logout():
     try:
         resp = make_response(jsonify({"ok": True}))
-        resp.delete_cookie("admin_key", samesite="Lax", secure=True)
+        resp.delete_cookie("admin_key", samesite="Lax", secure=IS_PROD)
         logger.info("Logout successful")
         return resp
     except Exception as e:

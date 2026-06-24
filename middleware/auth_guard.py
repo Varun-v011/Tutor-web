@@ -14,5 +14,5 @@ def require_admin(f):
         class AdminUser:
             class user:
                 email = "admin"
-        return f(AdminUser(), *args, **kwargs)
+        return f( *args, **kwargs)
     return decorated
