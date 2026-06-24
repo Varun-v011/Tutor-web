@@ -8,12 +8,6 @@ def require_admin(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         key = request.headers.get("x-admin-key") or request.cookies.get("admin_key")
-
-        print("cookies:", dict(request.cookies))
-        print("admin_key:", request.cookies.get("admin_key"))
-        print("header:", request.headers.get("x-admin-key"))
-        print("expected:", ADMIN_TOKEN)
-
         if not ADMIN_TOKEN:
             return jsonify({"error": "Server misconfigured"}), 500
 
