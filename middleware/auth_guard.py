@@ -2,17 +2,23 @@ from functools import wraps
 from flask import request, jsonify
 import os
 
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "supersecrettoken123")
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 
 def require_admin(f):
-    """Check admin_key cookie or x-admin-key header against ADMIN_TOKEN."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        key = request.headers.get("x-admin-key") or request.cookies.get("admin_key","admin123")
-        if not key or key != ADMIN_TOKEN:  # ✅ was ADMIN_PASSWORD, now ADMIN_TOKEN
+        key = request.headers.get("x-admin-key") or request.cookies.get("admin_key")
+
+        print("cookies:", dict(request.cookies))
+        print("admin_key:", request.cookies.get("admin_key"))
+        print("header:", request.headers.get("x-admin-key"))
+        print("expected:", ADMIN_TOKEN)
+
+        if not ADMIN_TOKEN:
+            return jsonify({"error": "Server misconfigured"}), 500
+
+        if not key or key != ADMIN_TOKEN:
             return jsonify({"error": "Unauthorized"}), 401
-        class AdminUser:
-            class user:
-                email = "admin"
-        return f( *args, **kwargs)
+
+        return f(*args, **kwargs)
     return decorated

@@ -42,7 +42,7 @@ def login():
         result = supabase.table("admin_users") \
                      .select("password_hash, id, created_at") \
                      .eq("email", email) \
-                     .single() \
+                     .maybe_single() \
                      .execute()
 
         if not result.data:
@@ -74,9 +74,10 @@ def login():
             admin_token,
             httponly=True,
             samesite="Lax",
-             secure=IS_PROD, 
-            max_age=60 * 60 * 24 * 7,  # 7 days
-        )
+            secure=IS_PROD,
+            path="/",
+            max_age=60 * 60 * 24 * 7,
+)
 
         logger.info(f"Login successful - {email}")
         return resp
@@ -90,7 +91,7 @@ def login():
 def logout():
     try:
         resp = make_response(jsonify({"ok": True}))
-        resp.delete_cookie("admin_key", samesite="Lax", secure=IS_PROD)
+        resp.delete_cookie("admin_key", samesite="Lax", secure=IS_PROD, path="/")
         logger.info("Logout successful")
         return resp
     except Exception as e:
